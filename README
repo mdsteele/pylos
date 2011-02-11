@@ -1,0 +1,26 @@
+This is a computer game implementation David G. Royffe's Pylos board game.
+More information about the original game and its rules can be found here:
+
+  http://boardgamegeek.com/boardgame/1419/pylos
+
+This was a learning project for me: I wanted to see if I could write a
+graphical computer game in Haskell.  The code is probably quite poor in some
+places, but I learned many valuable lessons for my next similar project.  For
+now, I am using Make to build the project, but hopefully someday I will learn
+to use Cabal properly.
+
+The code uses mostly standard Haskell libraries, along with SDL and OpenGL for
+the UI and graphics.  As such, it should be very portable, but I have so far
+only bothered to make it work on Mac OS X.  I would certainly welcome patches
+to make it run on other platforms.
+
+This codebase is licensed under the GNU GPL, version 3.  This codebase is free
+software: you can redistribute it and/or modify it under the terms of the GNU
+General Public License as published by the Free Software Foundation, either
+version 3 of the License, or (at your option) any later version.
+
+Pylos is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+The complete license can be found in the LICENSE file.
