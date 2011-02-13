@@ -1,0 +1,107 @@
+{- ============================================================================
+| Copyright 2010 Matthew D. Steele <mdsteele@alum.mit.edu>                    |
+|                                                                             |
+| This file is part of Pylos.                                                 |
+|                                                                             |
+| Pylos is free software: you can redistribute it and/or modify it            |
+| under the terms of the GNU General Public License as published by the Free  |
+| Software Foundation, either version 3 of the License, or (at your option)   |
+| any later version.                                                          |
+|                                                                             |
+| Pylos is distributed in the hope that it will be useful, but                |
+| WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY  |
+| or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License    |
+| for more details.                                                           |
+|                                                                             |
+| You should have received a copy of the GNU General Public License along     |
+| with Pylos.  If not, see <http://www.gnu.org/licenses/>.                    |
+============================================================================ -}
+
+{-# LANGUAGE EmptyDataDecls, ForeignFunctionInterface #-}
+
+#include "CoreFoundation/CFBundle.h"
+
+module System.MacOSX.Bundle
+  (--Bundle, getMainBundle, bundleResourcesDirectory, bundleResourcePath,
+   getResourcePath)
+where
+
+import Data.Word (Word8)
+import Foreign.C (CChar, CLong, peekCString)
+import Foreign.ForeignPtr (ForeignPtr, newForeignPtr, withForeignPtr)
+import Foreign.Marshal (finalizerFree, mallocArray)
+import Foreign.Ptr (FunPtr, Ptr, castPtr, nullPtr)
+import Foreign.Storable (Storable)
+import System.FilePath (combine)
+
+-------------------------------------------------------------------------------
+
+data BundleStruct
+type Bundle = Ptr BundleStruct
+
+-------------------------------------------------------------------------------
+
+getMainBundle :: IO (Maybe Bundle)
+getMainBundle = do
+  ptr <- cfBundleGetMainBundle
+  return $ if ptr == nullPtr then Nothing else Just ptr
+
+foreign import ccall unsafe "CFBundleGetMainBundle"
+  cfBundleGetMainBundle :: IO Bundle
+
+-------------------------------------------------------------------------------
+
+bundleResourcesDirectory :: Bundle -> IO (Maybe FilePath)
+bundleResourcesDirectory bundle = do
+  ptr <- cfBundleCopyResourcesDirectoryUrl bundle
+  if ptr == nullPtr then return Nothing else do
+    url <- makeCfForeignPtr ptr
+    withForeignPtr url $ \urlPtr -> do
+      let bufferSize = 500 -- Ugh, C programmer's disease.
+      withTempBuffer bufferSize $ \buffer -> do
+        success <- cfUrlGetFileSystemRepresentation
+                     urlPtr True buffer (fromIntegral bufferSize)
+        if not success then return Nothing else do
+          -- Note the type ascriptions below, to verify that castPtr is safe.
+          path <- peekCString (castPtr (buffer :: Ptr Word8) :: Ptr CChar)
+          return $ Just path
+
+data UrlStruct
+
+foreign import ccall unsafe "CFBundleCopyResourcesDirectoryURL"
+  cfBundleCopyResourcesDirectoryUrl :: Bundle -> IO (Ptr UrlStruct)
+
+foreign import ccall unsafe "CFURLGetFileSystemRepresentation"
+  cfUrlGetFileSystemRepresentation :: Ptr UrlStruct -> Bool -> Ptr Word8
+                                   -> CLong -> IO Bool
+
+-------------------------------------------------------------------------------
+
+bundleResourcePath :: Bundle -> FilePath -> IO (Maybe FilePath)
+bundleResourcePath bundle relativePath = do
+  mbDir <- bundleResourcesDirectory bundle
+  return $ fmap (`combine` relativePath) mbDir
+
+getResourcePath :: FilePath -> IO (Maybe FilePath)
+getResourcePath relativePath = do
+  mbBundle <- getMainBundle
+  case mbBundle of
+    Nothing -> return Nothing
+    Just bundle -> bundleResourcePath bundle relativePath
+
+-------------------------------------------------------------------------------
+-- Private utility functions:
+
+withTempBuffer :: (Storable a) => Int -> (Ptr a -> IO b) -> IO b
+withTempBuffer size action = do
+  bufferPtr <- mallocArray size
+  bufferForeignPtr <- newForeignPtr finalizerFree bufferPtr
+  withForeignPtr bufferForeignPtr action
+
+makeCfForeignPtr :: Ptr a -> IO (ForeignPtr a)
+makeCfForeignPtr = newForeignPtr cfRelease
+
+foreign import ccall unsafe "&CFRelease"
+  cfRelease :: FunPtr (Ptr a -> IO ())
+
+-------------------------------------------------------------------------------
