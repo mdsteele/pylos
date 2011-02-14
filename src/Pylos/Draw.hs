@@ -96,6 +96,12 @@ initializeScreen fullscreen = do
   GL.viewport $= (GL.Position 0 0, GL.Size (fromIntegral screenWidth)
                                            (fromIntegral screenHeight))
   GL.ortho 0 (fromIntegral screenWidth) (fromIntegral screenHeight) 0 (-1) 1
+  -- We are drawing "upside-down" relative to how GL normally draws things
+  -- (i.e. we have y increasing downwards rather than upwards), so we set the
+  -- pixelZoom such that when we use something like GL.drawPixels, the raster
+  -- position will correspond to the top-left of the pixel array rather than
+  -- the bottom left.
+  GL.pixelZoom $=  (1, -1)
 
 -------------------------------------------------------------------------------
 -- Sprites:
@@ -200,15 +206,29 @@ newSprite (width, height) draw = DrawOn $ do
   GL.scissor $= Just (GL.Position 0 0,
                       GL.Size (fromIntegral width) (fromIntegral height))
   GL.preservingMatrix $ do
+    -- See note [New Sprite] below for why we do this little dance here.
     GL.scale 1 (-1) (1 :: GL.GLdouble)
     GL.translate $ GL.Vector3 0 (negate $ toGLdouble screenHeight) 0
+    oldZoom <- GL.get GL.pixelZoom
+    GL.pixelZoom $= (1, 1)
     fromDrawOn draw
+    GL.pixelZoom $= oldZoom
   GL.scissor $= oldScissor
   makeSprite width height $ do
     GL.readBuffer $= newBuffer
     GL.copyTexImage2D Nothing 0 GL.RGB' (GL.Position 0 0)
         (GL.TextureSize2D (fromIntegral width) (fromIntegral height)) 0
     GL.drawBuffer $= oldBuffer
+
+-- Note [New Sprite]:
+--   Unfortunately, GL.copyTexImage2D doesn't seem to let us specify that the
+--   start position is the top-left rather than the bottom-right.  So, we need
+--   to carefully scale and translate the screen so that we draw everything
+--   upside-down, and then when we do the GL.copyTexImage2D, we pretend that
+--   the start position really is the top-left, and everything comes out fine.
+--   However, since we're drawing everything upside-down, we also need to
+--   temporarily set the pixelZoom to (1, 1) rather than (1, -1), so that if we
+--   call GL.drawPixels the rastered pixels will come out the right way.
 
 -------------------------------------------------------------------------------
 -- Blitting sprites:
@@ -305,18 +325,32 @@ withSubCanvas rect draw = DrawOn $ GL.preservingMatrix $ do
 
 newtype Font = Font SDLt.Font
 
+-- | Draw text with the given font and color onto the screen at the specified
+-- location.
 drawText :: (Axis a) => Font -> Color -> LocSpec a -> String -> Draw ()
-drawText font color spec string = do
-  -- TODO: Can we blit the SDL surface without allocating a GL texture?
-  sprite <- renderText font color string
-  blitLoc sprite spec
+drawText font color spec string = DrawOn $ do
+  surface <- renderText' font color string
+  (format, _) <- surfaceFormats surface
+  let width = SDL.surfaceGetWidth surface
+      height = SDL.surfaceGetHeight surface
+  let (Point x y) = locTopleft spec (fromIntegral width, fromIntegral height)
+  GL.rasterPos (GL.Vertex3 (toGLdouble x) (toGLdouble y) 0)
+  GL.textureBinding GL.Texture2D $= Nothing
+  pixelsPtr <- SDL.surfaceGetPixels surface
+  GL.drawPixels (GL.Size (fromIntegral width) (fromIntegral height))
+                (GL.PixelData format GL.UnsignedByte pixelsPtr)
 
 renderText :: Font -> Color -> String -> DrawOn a Sprite
-renderText (Font font) color string = DrawOn $ do
-  surf <- if null string then SDL.createRGBSurfaceEndian [SDL.SWSurface] 0 0 32
-          else SDLt.renderTextBlended font string (toSDLColor color)
-  makeSpriteFromSurface surf
+renderText font color string = DrawOn $ do
+  renderText' font color string >>= makeSpriteFromSurface
 
+renderText' :: Font -> Color -> String -> IO SDL.Surface
+renderText' (Font font) color string =
+  if null string then SDL.createRGBSurfaceEndian [SDL.SWSurface] 0 0 32
+  else SDLt.renderTextBlended font string (toSDLColor color)
+
+-- | Determine the width and height that a given string would have when
+-- rendered in the given font.
 textSize :: Font -> String -> DrawOn a (Int, Int)
 textSize (Font font) str = DrawOn $ SDLt.textSize font str
 
@@ -370,14 +404,7 @@ makeSprite width height action = do
 
 makeSpriteFromSurface :: SDL.Surface -> IO Sprite
 makeSpriteFromSurface surface = do
-  let pixelFormat = SDL.surfaceGetPixelFormat surface
-  bmask <- SDLx.pixelFormatGetBmask pixelFormat
-  let bgr = bmask == ntohl 0xff000000
-  numColors <- SDL.pixelFormatGetBytesPerPixel pixelFormat
-  let (format, format') = case numColors of
-                            4 -> (if bgr then GL.BGRA else GL.RGBA, GL.RGBA')
-                            3 -> (if bgr then GL.BGR  else GL.RGB,  GL.RGB')
-                            _ -> error ("numColors = " ++ show numColors)
+  (format, format') <- surfaceFormats surface
   let width = SDL.surfaceGetWidth surface
       height = SDL.surfaceGetHeight surface
   makeSprite width height $ do
@@ -386,6 +413,19 @@ makeSpriteFromSurface surface = do
       GL.texImage2D Nothing GL.NoProxy 0 format'
           (GL.TextureSize2D (fromIntegral width) (fromIntegral height))
           0 (GL.PixelData format GL.UnsignedByte pixelsPtr)
+
+-- | Determine the appropriate OpenGL pixel formats to use when interpreting
+-- the raw pixel data of the given SDL surface.
+surfaceFormats :: SDL.Surface -> IO (GL.PixelFormat, GL.PixelInternalFormat)
+surfaceFormats surface = do
+  let pixelFormat = SDL.surfaceGetPixelFormat surface
+  bmask <- SDLx.pixelFormatGetBmask pixelFormat
+  let bgr = bmask == ntohl 0xff000000 -- Are we in BGR order or RGB order?
+  numColors <- SDL.pixelFormatGetBytesPerPixel pixelFormat
+  case numColors of
+    4 -> return (if bgr then GL.BGRA else GL.RGBA, GL.RGBA')
+    3 -> return (if bgr then GL.BGR  else GL.RGB,  GL.RGB')
+    _ -> fail ("numColors = " ++ show numColors)
 
 -- | Convert a big-endian word to native endianness.
 foreign import ccall unsafe "netinet/in.h" ntohl :: Word32 -> Word32
