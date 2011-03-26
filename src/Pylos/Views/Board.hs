@@ -17,7 +17,9 @@
 | with Pylos.  If not, see <http://www.gnu.org/licenses/>.                    |
 ============================================================================ -}
 
-module Pylos.Views.Board where
+module Pylos.Views.Board
+  (GameplayAction(..), newGameplayView)
+where
 
 import Control.Applicative ((<|>))
 import Control.Arrow ((&&&))
@@ -260,12 +262,5 @@ newBoardView = do
       in fn mkRect
 
   return $ View paint handler
-
--------------------------------------------------------------------------------
--- Private utility functions:
-
-teamColor :: Team -> Color
-teamColor BlackTeam = Color 128 64 0
-teamColor WhiteTeam = Color 255 255 102
 
 -------------------------------------------------------------------------------

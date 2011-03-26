@@ -18,7 +18,7 @@
 ============================================================================ -}
 
 module Pylos.Modes
-  (Mode, NextMode(..), newBootUpMode)
+  (Mode, NextMode(..), newTitleMode)
 where
 
 import Control.Monad (when)
@@ -42,14 +42,6 @@ data NextMode = DoQuit | SameMode | ChangeMode Mode
 
 -------------------------------------------------------------------------------
 
-newBootUpMode :: IO Mode
-newBootUpMode = return mode where
-  mode EvQuit = return DoQuit
-  mode EvTick = fmap ChangeMode newTitleMode
-  mode _ = return SameMode
-
--------------------------------------------------------------------------------
-
 newTitleMode :: IO Mode
 newTitleMode = do
   view <- runDraw newTitleView
@@ -60,9 +52,6 @@ newTitleMode = do
         case mbAction of
           Nothing -> return SameMode
           Just NewGame -> fmap ChangeMode $ newNewGameMode mode view ()
---             state <- newGameState
---             mode' <- newGameplayMode state
---             return (ChangeMode mode')
           Just QuitGame -> return DoQuit
   return mode
 

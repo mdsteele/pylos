@@ -68,10 +68,6 @@ pSub (Point x1 y1) (Point x2 y2) = Point (x1 - x2) (y1 - y2)
 pNeg :: (Num a) => Point a -> Point a
 pNeg (Point x y) = Point (negate x) (negate y)
 
--- pSqDist :: (Num a) => Point a -> Point a -> a
--- pSqDist (Point x1 y1) (Point x2 y2) = dx * dx + dy * dy
---   where { dx = x1 - x2; dy = y1 - y2 }
-
 -------------------------------------------------------------------------------
 
 type IRect = Rect Int

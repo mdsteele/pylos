@@ -31,7 +31,7 @@ import Pylos.Constants (framesPerSecond)
 import Pylos.Data.Point (Point(Point))
 import Pylos.Draw (initializeScreen)
 import Pylos.Event
-import Pylos.Modes (Mode, NextMode(..), newBootUpMode)
+import Pylos.Modes (Mode, NextMode(..), newTitleMode)
 
 -------------------------------------------------------------------------------
 
@@ -43,7 +43,7 @@ newEngineState :: IO EngineState
 newEngineState = do fps <- SDLf.new
                     SDLf.init fps
                     SDLf.set fps framesPerSecond
-                    mode <- newBootUpMode
+                    mode <- newTitleMode
                     return $ EngineState fps True mode
 
 convertKeyMods :: [SDL.Modifier] -> Maybe [KeyMod]
