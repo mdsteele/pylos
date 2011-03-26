@@ -250,11 +250,11 @@ newBoardView = do
           fullSide = fromIntegral (min width height)
           levels = fromIntegral (pyramidLevels board)
           baseSide = (fullSide - gap * (levels - 1)) / levels
+          stride = baseSide + gap
           mkRect (Coords level row col) =
             let level' = fromIntegral level
-                side = baseSide * (level' + 2 * levels) / (3 * levels)
-                stride = side + gap
-                offset = (fullSide - (gap * (level' - 1) + side * level')) / 2
+                side = baseSide * (level' + 4 * levels) / (5 * levels)
+                offset = (fullSide - side - stride * (level' - 1)) / 2
             in Rect (offset + stride * fromIntegral (col - 1))
                     (offset + stride * fromIntegral (row - 1)) side side
       in fn mkRect
