@@ -22,7 +22,6 @@ module Pylos.Event
 where
 
 import qualified Graphics.UI.SDL as SDL
-import qualified Graphics.UI.SDL.Extras as SDLx
 
 import Pylos.Data.Point (IPoint)
 

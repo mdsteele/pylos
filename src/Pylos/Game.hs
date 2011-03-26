@@ -25,7 +25,7 @@ import Control.Exception (assert)
 import Control.Monad (guard)
 import Data.Array ((!), (//), Array, bounds, listArray, range)
 import qualified Data.Foldable as Fold
-import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 
 import Pylos.Utility (maximumKey)
 
@@ -267,7 +267,7 @@ chooseBestMove depth rules team board =
     else maximumKey snd $ map (id &&& moveScore') moves
   where
     moves = allLegalMoves rules team board
-    moveScore board move = boardScore rules team $ applyMove team move board
+    moveScore board' move = boardScore rules team $ applyMove team move board'
     moveScore' move = recip $
       case chooseBestMove (depth - 1) rules (opponent team)
              (applyMove team move board) of
