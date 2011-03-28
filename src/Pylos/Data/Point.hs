@@ -19,9 +19,6 @@
 
 module Pylos.Data.Point where
 
-import Control.Monad (liftM2)
-import Test.QuickCheck (Arbitrary(arbitrary, coarbitrary))
-
 -------------------------------------------------------------------------------
 
 class (Real a) => Axis a where
@@ -46,10 +43,6 @@ type DPoint = Point Double
 
 data Point a = Point { pointX :: !a, pointY :: !a }
   deriving (Eq, Show)
-
-instance (Arbitrary a) => Arbitrary (Point a) where
-  arbitrary = liftM2 Point arbitrary arbitrary
-  coarbitrary (Point x y) = coarbitrary x . coarbitrary y
 
 instance Functor Point where
   fmap f (Point x y) = Point (f x) (f y)

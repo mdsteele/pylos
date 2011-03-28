@@ -42,7 +42,7 @@ data EngineState = EngineState { engineFps :: SDLf.FPSManager,
 newEngineState :: IO EngineState
 newEngineState = do fps <- SDLf.new
                     SDLf.init fps
-                    SDLf.set fps framesPerSecond
+                    _ <- SDLf.set fps framesPerSecond
                     mode <- newTitleMode
                     return $ EngineState fps True mode
 

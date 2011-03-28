@@ -19,8 +19,6 @@
 
 {-# LANGUAGE EmptyDataDecls, ForeignFunctionInterface #-}
 
-#include "CoreFoundation/CFBundle.h"
-
 module System.MacOSX.Bundle
   (--Bundle, getMainBundle, bundleResourcesDirectory, bundleResourcePath,
    getResourcePath)

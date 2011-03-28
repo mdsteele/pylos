@@ -28,8 +28,8 @@
 #include <SDL/SDL.h>
 
 #ifdef __GLASGOW_HASKELL__
-#include "HSMain_stub.h"
-extern void __stginit_HSMain (void);
+extern void hs_main(void);  // defined in HSMain_stub.c
+extern void __stginit_HSMain(void);
 #endif
 
 int SDL_main(int argc, char *argv[]) {

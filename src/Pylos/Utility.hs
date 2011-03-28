@@ -34,7 +34,7 @@ import Control.Arrow ((&&&))
 import Control.Monad (msum)
 import Data.List (maximumBy, minimumBy, sortBy, unfoldr)
 import Data.Ord (comparing)
-import qualified GHC.IOBase
+import qualified GHC.IO
 import qualified GHC.Prim
 import System.Random (RandomGen, randomR, split)
 
@@ -111,6 +111,6 @@ delayFinalizers value action = do
 --   the computation.
 touch :: a -> IO ()
 touch x =  -- So, I _think_ this works, but I'm not totally sure.
-  GHC.IOBase.IO (\s -> case GHC.Prim.touch# x s of { s' -> (# s', () #) })
+  GHC.IO.IO (\s -> case GHC.Prim.touch# x s of { s' -> (# s', () #) })
 
 -------------------------------------------------------------------------------
