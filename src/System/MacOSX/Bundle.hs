@@ -27,9 +27,8 @@ where
 import Data.Word (Word8)
 import Foreign.C (CChar, CLong, peekCString)
 import Foreign.ForeignPtr (ForeignPtr, newForeignPtr, withForeignPtr)
-import Foreign.Marshal (finalizerFree, mallocArray)
+import Foreign.Marshal (allocaArray)
 import Foreign.Ptr (FunPtr, Ptr, castPtr, nullPtr)
-import Foreign.Storable (Storable)
 import System.FilePath (combine)
 
 -------------------------------------------------------------------------------
@@ -56,7 +55,7 @@ bundleResourcesDirectory bundle = do
     url <- makeCfForeignPtr ptr
     withForeignPtr url $ \urlPtr -> do
       let bufferSize = 500 -- Ugh, C programmer's disease.
-      withTempBuffer bufferSize $ \buffer -> do
+      allocaArray bufferSize $ \buffer -> do
         success <- cfUrlGetFileSystemRepresentation
                      urlPtr True buffer (fromIntegral bufferSize)
         if not success then return Nothing else do
@@ -89,12 +88,6 @@ getResourcePath relativePath = do
 
 -------------------------------------------------------------------------------
 -- Private utility functions:
-
-withTempBuffer :: (Storable a) => Int -> (Ptr a -> IO b) -> IO b
-withTempBuffer size action = do
-  bufferPtr <- mallocArray size
-  bufferForeignPtr <- newForeignPtr finalizerFree bufferPtr
-  withForeignPtr bufferForeignPtr action
 
 makeCfForeignPtr :: Ptr a -> IO (ForeignPtr a)
 makeCfForeignPtr = newForeignPtr cfRelease
