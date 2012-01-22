@@ -41,13 +41,14 @@ newLabel loc = do
 
 newTextButton :: (MonadDraw m) => Maybe Key -> a -> m (View (String, Bool) a)
 newTextButton mbKey value = do
-  state <- newDrawRef (False, False, False)
+  state <- newDrawRef (False, False)
   font <- loadFont "caligula.ttf" 18
   let
 
     paint (text, enabled) = do
-      (keyPressed, mousePressed, mouseHover) <- readDrawRef state
+      (keyPressed, mousePressed) <- readDrawRef state
       rect <- canvasRect
+      mouseHover <- fmap (rectContains rect) getRelativeMousePos
       let pressed = enabled && (keyPressed || mousePressed && mouseHover)
       let tint = if not enabled then Tint 128 128 128 128
                  else if pressed then Tint 64 64 255 255
@@ -58,24 +59,23 @@ newTextButton mbKey value = do
       drawText font (fromTint tint) (LocCenter center) text
 
     handler (_, enabled) event = do
-      (kp, mp, mh) <- readDrawRef state
+      (kp, mp) <- readDrawRef state
       rect <- canvasRect
       case event of
         EvKeyDown key kmod _ -> do
           when (null kmod && mbKey == Just key) $ do
-            writeDrawRef state (True, mp, mh)
+            writeDrawRef state (True, mp)
           return Nothing
         EvKeyUp key ->
           if not (kp && mbKey == Just key) then return Nothing
-          else writeDrawRef state (False, mp, mh) >> return (Just value)
-        EvMouseMotion pt _ ->
-          writeDrawRef state (kp, mp, rectContains rect pt) >> return Nothing
+          else writeDrawRef state (False, mp) >> return (Just value)
         EvMouseDown pt -> do
-          when (rectContains rect pt) $ writeDrawRef state (kp, True, mh)
+          when (rectContains rect pt) $ writeDrawRef state (kp, True)
           return Nothing
-        EvMouseUp _ -> if not mp then return Nothing else do
-          writeDrawRef state (kp, False, mh)
-          return $ if mh && not kp && enabled then Just value else Nothing
+        EvMouseUp pt -> if not mp then return Nothing else do
+          writeDrawRef state (kp, False)
+          return $ if rectContains rect pt && not kp && enabled
+                   then Just value else Nothing
         _ -> return Nothing
 
   return (View paint handler)
@@ -84,28 +84,25 @@ newTextButton mbKey value = do
 
 newRadioButton :: (Eq a, MonadDraw m) => DrawRef a -> a -> m (View String b)
 newRadioButton valueRef value = do
-  hoverRef <- newDrawRef False
   font <- loadFont "caligula.ttf" 18
   let
 
     paint text = do
-      mouseHover <- readDrawRef hoverRef
+      rect <- canvasRect
+      mouseHover <- fmap (rectContains rect) getRelativeMousePos
       current <- readDrawRef valueRef
       let pressed = current == value
       let tint = if pressed then Tint 255 64 64 255
                  else if mouseHover then Tint 255 255 64 255
                       else Tint 255 255 255 255
-      rect <- canvasRect
       drawBevelRect tint 5 rect
       let center = rectCenter rect `pAdd` if pressed then Point 1 1 else pZero
       drawText font (fromTint tint) (LocCenter center) text
 
     handler _ event = do
-      rect <- canvasRect
       case event of
-        EvMouseMotion pt _ ->
-          writeDrawRef hoverRef (rectContains rect pt)
         EvMouseDown pt -> do
+          rect <- canvasRect
           when (rectContains rect pt) $ writeDrawRef valueRef value
         _ -> return ()
       return Nothing
