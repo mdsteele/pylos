@@ -27,8 +27,8 @@ module Pylos.Draw
    DrawOn, runDraw, debugDraw,
    -- * Reference cells
    DrawRef, newDrawRef, readDrawRef, writeDrawRef,
-   -- * The Draw Monad
-   Draw, drawToScreen,
+   -- * The Paint Monad
+   Paint, drawToScreen,
    Canvas, canvasWidth, canvasHeight, canvasSize, canvasRect,
    -- * Drawing onto canvases
    -- ** Blitting sprites
@@ -146,13 +146,13 @@ debugDraw :: String -> DrawOn a ()
 debugDraw = DrawOn . putStrLn
 
 -------------------------------------------------------------------------------
--- The Draw monad:
+-- The Paint monad:
 
 data Canvas
 
-type Draw a = DrawOn Canvas a
+type Paint a = DrawOn Canvas a
 
-drawToScreen :: Draw () -> IO ()
+drawToScreen :: Paint () -> IO ()
 drawToScreen draw = do
   GL.clear [GL.ColorBuffer]
   fromDrawOn draw
@@ -160,20 +160,20 @@ drawToScreen draw = do
   GL.finish
   SDL.glSwapBuffers
 
-canvasWidth :: Draw Int
+canvasWidth :: Paint Int
 canvasWidth = fmap fst canvasSize
 
-canvasHeight :: Draw Int
+canvasHeight :: Paint Int
 canvasHeight = fmap snd canvasSize
 
-canvasSize :: Draw (Int, Int)
+canvasSize :: Paint (Int, Int)
 canvasSize = DrawOn $ do
   scissor <- GL.get GL.scissor
   return $ case scissor of
     Nothing -> (screenWidth, screenHeight)
     Just (_, GL.Size w h) -> (fromIntegral w, fromIntegral h)
 
-canvasRect :: Draw IRect
+canvasRect :: Paint IRect
 canvasRect = do
   (width, height) <- canvasSize
   return $ Rect 0 0 width height
@@ -195,7 +195,7 @@ writeDrawRef (DrawRef ref) value = DrawOn (writeIORef ref value)
 -------------------------------------------------------------------------------
 -- Creating new sprites:
 
-newSprite :: (Int, Int) -> Draw () -> DrawOn a Sprite
+newSprite :: (Int, Int) -> Paint () -> DrawOn a Sprite
 newSprite (width, height) draw = DrawOn $ do
   oldBuffer <- GL.get GL.drawBuffer
   let newBuffer = case oldBuffer of GL.AuxBuffer i -> GL.AuxBuffer (i + 1)
@@ -233,20 +233,20 @@ newSprite (width, height) draw = DrawOn $ do
 -------------------------------------------------------------------------------
 -- Blitting sprites:
 
-blitTopleft :: (Axis a) => Sprite -> Point a -> Draw ()
+blitTopleft :: (Axis a) => Sprite -> Point a -> Paint ()
 blitTopleft sprite (Point x y) =
   blitStretch sprite (Rect x y (fromIntegral $ spriteWidth sprite)
                                (fromIntegral $ spriteHeight sprite))
 
-blitLoc :: (Axis a) => Sprite -> LocSpec a -> Draw ()
+blitLoc :: (Axis a) => Sprite -> LocSpec a -> Paint ()
 blitLoc sprite loc = blitTopleft sprite $ locTopleft loc $
                      (fromIntegral *** fromIntegral) $ spriteSize sprite
 
-blitStretch :: (Axis a) => Sprite -> Rect a -> Draw ()
+blitStretch :: (Axis a) => Sprite -> Rect a -> Paint ()
 blitStretch sprite rect =
   blitGeneralized sprite whiteTint (fmap toGLdouble rect) (Rect 0 0 1 1)
 
-blitRepeat :: (Axis a) => Sprite -> Point a -> Rect a -> Draw ()
+blitRepeat :: (Axis a) => Sprite -> Point a -> Rect a -> Paint ()
 blitRepeat sprite offset rect =
   let width = toGLdouble (spriteWidth sprite)
       height = toGLdouble (spriteHeight sprite)
@@ -257,7 +257,7 @@ blitRepeat sprite offset rect =
   in blitGeneralized sprite whiteTint toRect texRect
 
 blitGeneralized :: Sprite -> Tint -> Rect GL.GLdouble -> Rect GL.GLdouble
-                -> Draw ()
+                -> Paint ()
 blitGeneralized sprite tint (Rect rx ry rw rh) (Rect tx ty tw th) = do
   DrawOn $ delayFinalizers sprite $ do
     GL.textureBinding GL.Texture2D $= Just (spriteTexture sprite)
@@ -276,13 +276,13 @@ blitGeneralized sprite tint (Rect rx ry rw rh) (Rect tx ty tw th) = do
 -- Geometric primitives:
 
 -- | Draw an antialiased oval onto the canvas.
-drawOval :: (Axis a) => Tint -> Rect a -> Draw ()
+drawOval :: (Axis a) => Tint -> Rect a -> Paint ()
 drawOval = strokeOval GL.LineLoop
 
-tintOval :: (Axis a) => Tint -> Rect a -> Draw ()
+tintOval :: (Axis a) => Tint -> Rect a -> Paint ()
 tintOval = strokeOval GL.Polygon
 
-strokeOval :: (Axis a) => GL.PrimitiveMode -> Tint -> Rect a -> Draw ()
+strokeOval :: (Axis a) => GL.PrimitiveMode -> Tint -> Rect a -> Paint ()
 strokeOval mode tint (Rect x y w h) = DrawOn $ when (w > 0 && h > 0) $ do
   let hRad = toGLdouble w / 2
       vRad = toGLdouble h / 2
@@ -295,14 +295,14 @@ strokeOval mode tint (Rect x y w h) = DrawOn $ when (w > 0 && h > 0) $ do
       untilM 0 (>= 2 * pi) (+thetaStep) $ \theta -> do
         GL.vertex $ GL.Vertex3 (hRad * cos theta) (vRad * sin theta) 0
 
-drawPolygon :: (Axis a) => Tint -> [Point a] -> Draw ()
+drawPolygon :: (Axis a) => Tint -> [Point a] -> Paint ()
 drawPolygon tint points = DrawOn $ do
   drawPrimitive GL.LineLoop tint $ mapM_ pointVertex' points
 
 -------------------------------------------------------------------------------
 -- Miscellaneous canvas functions:
 
-withSubCanvas :: IRect -> Draw a -> Draw a
+withSubCanvas :: IRect -> Paint a -> Paint a
 withSubCanvas rect draw = DrawOn $ GL.preservingMatrix $ do
   GL.translate $ GL.Vector3 (toGLdouble $ rectX rect)
                             (toGLdouble $ rectY rect) 0
@@ -327,7 +327,7 @@ newtype Font = Font SDLt.Font
 
 -- | Draw text with the given font and color onto the screen at the specified
 -- location.
-drawText :: (Axis a) => Font -> Color -> LocSpec a -> String -> Draw ()
+drawText :: (Axis a) => Font -> Color -> LocSpec a -> String -> Paint ()
 drawText font color spec string = DrawOn $ do
   surface <- renderText' font color string
   (format, _) <- surfaceFormats surface

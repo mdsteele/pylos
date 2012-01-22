@@ -103,7 +103,7 @@ newPlayerView team = do
   font1 <- loadFont "caligula.ttf" 36
   font2 <- loadFont "caligula.ttf" 24
   let
-    paint :: GameState -> Draw ()
+    paint :: GameState -> Paint ()
     paint state = do
       cx <- fmap (`div` 2) canvasWidth
       let kind = case tmGet team $ gsPlayers state of
@@ -128,7 +128,7 @@ newBoardView = do
                   in traverse loadSprite $ makeTotalMap piecePath
   let
 
-    paint :: GameState -> Draw ()
+    paint :: GameState -> Paint ()
     paint state = do
       -- Draw the base of the board.
       size <- canvasSize

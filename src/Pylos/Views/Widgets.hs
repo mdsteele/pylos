@@ -112,7 +112,7 @@ newRadioButton valueRef value = do
 
 -------------------------------------------------------------------------------
 
-drawBevelRect :: Tint -> Int -> IRect -> Draw ()
+drawBevelRect :: Tint -> Int -> IRect -> Paint ()
 drawBevelRect tint b rect = withSubCanvas rect $ do
   (w, h) <- canvasSize
   drawPolygon tint [Point b 0, Point (w - b - 1) 0,
