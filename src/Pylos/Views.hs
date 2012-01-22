@@ -40,7 +40,7 @@ import Pylos.Utility (flip4)
 
 data View a b = View
   { viewPaint :: a -> Paint (),
-    viewHandler :: a -> IRect -> Event -> DrawOn () (Maybe b) }
+    viewHandler :: a -> IRect -> Event -> Draw (Maybe b) }
 
 inertView :: (a -> Paint ()) -> View a b
 inertView paintFn = View paintFn $ const $ const $ const $ return Nothing

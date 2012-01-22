@@ -17,19 +17,19 @@
 | with Pylos.  If not, see <http://www.gnu.org/licenses/>.                    |
 ============================================================================ -}
 
-{-# LANGUAGE EmptyDataDecls, ForeignFunctionInterface #-}
+{-# LANGUAGE ForeignFunctionInterface, GeneralizedNewtypeDeriving #-}
 
 module Pylos.Draw
   (initializeScreen,
    -- * Sprites
    Sprite, spriteWidth, spriteHeight, spriteSize, subSprite,
-   -- * The DrawOn Monad
-   DrawOn, runDraw, debugDraw,
-   -- * Reference cells
-   DrawRef, newDrawRef, readDrawRef, writeDrawRef,
+   -- * The Draw Monad
+   Draw, MonadDraw(..), debugDraw,
    -- * The Paint Monad
    Paint, drawToScreen,
-   Canvas, canvasWidth, canvasHeight, canvasSize, canvasRect,
+   canvasWidth, canvasHeight, canvasSize, canvasRect,
+   -- * Reference cells
+   DrawRef, newDrawRef, readDrawRef, writeDrawRef,
    -- * Drawing onto canvases
    -- ** Blitting sprites
    blitTopleft, blitLoc, blitStretch, blitRepeat,
@@ -43,7 +43,7 @@ module Pylos.Draw
    loadFont, loadSprite)
 where
 
-import Control.Applicative (Applicative(pure, (<*>)))
+import Control.Applicative (Applicative)
 import Control.Arrow ((&&&), (***))
 import Control.Monad (when)
 import Data.Bits (xor)
@@ -117,45 +117,37 @@ data Sprite = Sprite
 spriteSize :: Sprite -> (Int, Int)
 spriteSize = spriteWidth &&& spriteHeight
 
-subSprite :: Sprite -> IRect -> DrawOn z Sprite
+subSprite :: (MonadDraw m) => Sprite -> IRect -> m Sprite
 subSprite sprite rect = newSprite (rectSize rect) $ do
   blitTopleft sprite $ pNeg $ rectTopleft rect
 
 -------------------------------------------------------------------------------
--- The DrawOn monad:
+-- The Draw monad:
 
-newtype DrawOn a b = DrawOn { fromDrawOn :: IO b }
+newtype Draw a = Draw { fromDraw :: IO a }
+  deriving (Applicative, Functor, Monad)
 
-instance Applicative (DrawOn a) where
-  pure = DrawOn . pure
-  (DrawOn f) <*> (DrawOn g) = DrawOn (f <*> g)
+class (Applicative m, Monad m) => MonadDraw m where
+  runDraw :: Draw a -> m a
 
-instance Functor (DrawOn a) where
-  fmap fn m = DrawOn (fmap fn (fromDrawOn m))
+instance MonadDraw Draw where runDraw = id
+instance MonadDraw IO where runDraw = fromDraw
 
-instance Monad (DrawOn a) where
-  return = DrawOn . return
-  draw >>= fn = DrawOn $ do b <- fromDrawOn draw
-                            fromDrawOn (fn b)
-  fail = DrawOn . fail
-
-runDraw :: DrawOn () a -> IO a
-runDraw = fromDrawOn
-
-debugDraw :: String -> DrawOn a ()
-debugDraw = DrawOn . putStrLn
+debugDraw :: (MonadDraw m) => String -> m ()
+debugDraw = runDraw . Draw . putStrLn
 
 -------------------------------------------------------------------------------
 -- The Paint monad:
 
-data Canvas
+newtype Paint a = Paint { fromPaint :: IO a }
+  deriving (Applicative, Functor, Monad)
 
-type Paint a = DrawOn Canvas a
+instance MonadDraw Paint where runDraw = Paint . fromDraw
 
 drawToScreen :: Paint () -> IO ()
-drawToScreen draw = do
+drawToScreen paint = do
   GL.clear [GL.ColorBuffer]
-  fromDrawOn draw
+  fromPaint paint
   GL.flush -- TODO: Are the flush and finish at all necessary?
   GL.finish
   SDL.glSwapBuffers
@@ -167,7 +159,7 @@ canvasHeight :: Paint Int
 canvasHeight = fmap snd canvasSize
 
 canvasSize :: Paint (Int, Int)
-canvasSize = DrawOn $ do
+canvasSize = Paint $ do
   scissor <- GL.get GL.scissor
   return $ case scissor of
     Nothing -> (screenWidth, screenHeight)
@@ -183,20 +175,20 @@ canvasRect = do
 
 newtype DrawRef a = DrawRef (IORef a)
 
-newDrawRef :: b -> DrawOn a (DrawRef b)
-newDrawRef = DrawOn . fmap DrawRef . newIORef
+newDrawRef :: (MonadDraw m) => a -> m (DrawRef a)
+newDrawRef = runDraw . Draw . fmap DrawRef . newIORef
 
-readDrawRef :: DrawRef b -> DrawOn a b
-readDrawRef (DrawRef ref) = DrawOn (readIORef ref)
+readDrawRef :: (MonadDraw m) => DrawRef a -> m a
+readDrawRef (DrawRef ref) = runDraw $ Draw $ readIORef ref
 
-writeDrawRef :: DrawRef b -> b -> DrawOn a ()
-writeDrawRef (DrawRef ref) value = DrawOn (writeIORef ref value)
+writeDrawRef :: (MonadDraw m) => DrawRef a -> a -> m ()
+writeDrawRef (DrawRef ref) value = runDraw $ Draw $ writeIORef ref value
 
 -------------------------------------------------------------------------------
 -- Creating new sprites:
 
-newSprite :: (Int, Int) -> Paint () -> DrawOn a Sprite
-newSprite (width, height) draw = DrawOn $ do
+newSprite :: (MonadDraw m) => (Int, Int) -> Paint () -> m Sprite
+newSprite (width, height) paint = runDraw $ Draw $ do
   oldBuffer <- GL.get GL.drawBuffer
   let newBuffer = case oldBuffer of GL.AuxBuffer i -> GL.AuxBuffer (i + 1)
                                     _ -> GL.AuxBuffer 0
@@ -211,7 +203,7 @@ newSprite (width, height) draw = DrawOn $ do
     GL.translate $ GL.Vector3 0 (negate $ toGLdouble screenHeight) 0
     oldZoom <- GL.get GL.pixelZoom
     GL.pixelZoom $= (1, 1)
-    fromDrawOn draw
+    fromPaint paint
     GL.pixelZoom $= oldZoom
   GL.scissor $= oldScissor
   makeSprite width height $ do
@@ -259,7 +251,7 @@ blitRepeat sprite offset rect =
 blitGeneralized :: Sprite -> Tint -> Rect GL.GLdouble -> Rect GL.GLdouble
                 -> Paint ()
 blitGeneralized sprite tint (Rect rx ry rw rh) (Rect tx ty tw th) = do
-  DrawOn $ delayFinalizers sprite $ do
+  Paint $ delayFinalizers sprite $ do
     GL.textureBinding GL.Texture2D $= Just (spriteTexture sprite)
     setTint tint
     GL.renderPrimitive GL.Quads $ do
@@ -283,7 +275,7 @@ tintOval :: (Axis a) => Tint -> Rect a -> Paint ()
 tintOval = strokeOval GL.Polygon
 
 strokeOval :: (Axis a) => GL.PrimitiveMode -> Tint -> Rect a -> Paint ()
-strokeOval mode tint (Rect x y w h) = DrawOn $ when (w > 0 && h > 0) $ do
+strokeOval mode tint (Rect x y w h) = Paint $ when (w > 0 && h > 0) $ do
   let hRad = toGLdouble w / 2
       vRad = toGLdouble h / 2
   let cx = toGLdouble x + hRad
@@ -296,14 +288,14 @@ strokeOval mode tint (Rect x y w h) = DrawOn $ when (w > 0 && h > 0) $ do
         GL.vertex $ GL.Vertex3 (hRad * cos theta) (vRad * sin theta) 0
 
 drawPolygon :: (Axis a) => Tint -> [Point a] -> Paint ()
-drawPolygon tint points = DrawOn $ do
+drawPolygon tint points = Paint $ do
   drawPrimitive GL.LineLoop tint $ mapM_ pointVertex' points
 
 -------------------------------------------------------------------------------
 -- Miscellaneous canvas functions:
 
 withSubCanvas :: IRect -> Paint a -> Paint a
-withSubCanvas rect draw = DrawOn $ GL.preservingMatrix $ do
+withSubCanvas rect paint = Paint $ GL.preservingMatrix $ do
   GL.translate $ GL.Vector3 (toGLdouble $ rectX rect)
                             (toGLdouble $ rectY rect) 0
   oldScissor <- GL.get GL.scissor
@@ -316,7 +308,7 @@ withSubCanvas rect draw = DrawOn $ GL.preservingMatrix $ do
       (GL.Position (fromIntegral $ rectX rect')
                    (fromIntegral $ screenHeight - rectY rect' - rectH rect'),
        GL.Size (fromIntegral $ rectW rect') (fromIntegral $ rectH rect'))
-  result <- fromDrawOn draw
+  result <- fromPaint paint
   GL.scissor $= oldScissor
   return result
 
@@ -328,7 +320,7 @@ newtype Font = Font SDLt.Font
 -- | Draw text with the given font and color onto the screen at the specified
 -- location.
 drawText :: (Axis a) => Font -> Color -> LocSpec a -> String -> Paint ()
-drawText font color spec string = DrawOn $ do
+drawText font color spec string = Paint $ do
   surface <- renderText' font color string
   (format, _) <- surfaceFormats surface
   let width = SDL.surfaceGetWidth surface
@@ -340,8 +332,8 @@ drawText font color spec string = DrawOn $ do
   GL.drawPixels (GL.Size (fromIntegral width) (fromIntegral height))
                 (GL.PixelData format GL.UnsignedByte pixelsPtr)
 
-renderText :: Font -> Color -> String -> DrawOn a Sprite
-renderText font color string = DrawOn $ do
+renderText :: (MonadDraw m) => Font -> Color -> String -> m Sprite
+renderText font color string = runDraw $ Draw $ do
   renderText' font color string >>= makeSpriteFromSurface
 
 renderText' :: Font -> Color -> String -> IO SDL.Surface
@@ -351,10 +343,10 @@ renderText' (Font font) color string =
 
 -- | Determine the width and height that a given string would have when
 -- rendered in the given font.
-textSize :: Font -> String -> DrawOn a (Int, Int)
-textSize (Font font) str = DrawOn $ SDLt.textSize font str
+textSize :: (MonadDraw m) => Font -> String -> m (Int, Int)
+textSize (Font font) str = runDraw $ Draw $ SDLt.textSize font str
 
-textWidth :: Font -> String -> DrawOn a Int
+textWidth :: (MonadDraw m) => Font -> String -> m Int
 textWidth = (fmap fst .) . textSize
 
 -------------------------------------------------------------------------------
@@ -365,8 +357,8 @@ fontCache :: HT.HashTable (FilePath, Int) Font
 fontCache = unsafePerformIO $ HT.new (==) hash
   where hash (str, int) = HT.hashString str `xor` HT.hashInt int
 
-loadFont :: FilePath -> Int -> DrawOn z Font
-loadFont name size = DrawOn $ do
+loadFont :: (MonadDraw m) => FilePath -> Int -> m Font
+loadFont name size = runDraw $ Draw $ do
   let key = (name, size)
   mbFont <- HT.lookup fontCache key
   case mbFont of
@@ -380,8 +372,8 @@ loadFont name size = DrawOn $ do
           HT.insert fontCache key font
           return font
 
-loadSprite :: FilePath -> DrawOn z Sprite
-loadSprite name = DrawOn $ do
+loadSprite :: (MonadDraw m) => FilePath -> m Sprite
+loadSprite name = runDraw $ Draw $ do
   mbPath <- getResourcePath (FilePath.combine "images" name)
   case mbPath of
     Nothing -> fail "loadSprite: getResourcePath failed"

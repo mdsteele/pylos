@@ -37,7 +37,7 @@ data NewGameAction = CancelNewGame | StartNewGame NewGameSpec
 
 -------------------------------------------------------------------------------
 
-newNewGameView :: View a b -> a -> DrawOn z (View () NewGameAction)
+newNewGameView :: (MonadDraw m) => View a b -> a -> m (View () NewGameAction)
 newNewGameView bgView bgInput = do
   dialog <- fmap (subView_ $ Rect 140 110 360 260) newNewGameDialog
   let paint input = do
@@ -52,7 +52,7 @@ newNewGameView bgView bgInput = do
 
 -------------------------------------------------------------------------------
 
-newNewGameDialog :: DrawOn z (View () NewGameAction)
+newNewGameDialog :: (MonadDraw m) => m (View () NewGameAction)
 newNewGameDialog = do
   rulesetRef <- newDrawRef NormalRules
   boardSizeRef <- newDrawRef 4
@@ -114,7 +114,7 @@ newNewGameDialog = do
 
 -------------------------------------------------------------------------------
 
-newDialogBackgroundView :: DrawOn z (View a b)
+newDialogBackgroundView :: (MonadDraw m) => m (View a b)
 newDialogBackgroundView = do
   image <- loadSprite "dialog.png"
   topleft <- subSprite image $ Rect 0 0 8 8
@@ -145,7 +145,7 @@ newDialogBackgroundView = do
 
 -------------------------------------------------------------------------------
 
-inject :: (DrawOn () c) -> View a b -> View a c
+inject :: Draw c -> View a b -> View a c
 inject action (View paint handler) = View paint handler' where
   handler' input rect event = do
     mbValue <- handler input rect event

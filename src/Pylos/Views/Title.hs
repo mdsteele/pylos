@@ -22,7 +22,7 @@ module Pylos.Views.Title
 where
 
 import Pylos.Data.Point (IPoint, Rect(Rect), pZero)
-import Pylos.Draw (DrawOn, blitTopleft, loadSprite)
+import Pylos.Draw (MonadDraw, blitTopleft, loadSprite)
 import Pylos.Event (Key(KeyN, KeyQ))
 import Pylos.Views (View, compoundView, inertView, subView_, viewMap)
 import Pylos.Views.Widgets (newTextButton)
@@ -31,7 +31,7 @@ import Pylos.Views.Widgets (newTextButton)
 
 data TitleAction = NewGame | QuitGame
 
-newTitleView :: DrawOn z (View () TitleAction)
+newTitleView :: (MonadDraw m) => m (View () TitleAction)
 newTitleView = do
   background <- newBackgroundView
   newGameButton <- fmap (subView_ (Rect 480 350 100 30) .
@@ -44,7 +44,7 @@ newTitleView = do
 
 -------------------------------------------------------------------------------
 
-newBackgroundView :: DrawOn z (View a b)
+newBackgroundView :: (MonadDraw m) => m (View a b)
 newBackgroundView = do
   background <- loadSprite "title.png"
   return $ inertView $ const $ blitTopleft background (pZero :: IPoint)

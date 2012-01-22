@@ -31,7 +31,7 @@ import Pylos.Views
 
 -------------------------------------------------------------------------------
 
-newLabel :: (Axis a) => LocSpec a -> DrawOn z (View String b)
+newLabel :: (Axis a, MonadDraw m) => LocSpec a -> m (View String b)
 newLabel loc = do
   font <- loadFont "caligula.ttf" 18
   let paint text = drawText font whiteColor loc text
@@ -39,7 +39,7 @@ newLabel loc = do
 
 -------------------------------------------------------------------------------
 
-newTextButton :: Maybe Key -> a -> DrawOn z (View (String, Bool) a)
+newTextButton :: (MonadDraw m) => Maybe Key -> a -> m (View (String, Bool) a)
 newTextButton mbKey value = do
   state <- newDrawRef (False, False, False)
   font <- loadFont "caligula.ttf" 18
@@ -81,7 +81,7 @@ newTextButton mbKey value = do
 
 -------------------------------------------------------------------------------
 
-newRadioButton :: (Eq a) => DrawRef a -> a -> DrawOn z (View String b)
+newRadioButton :: (Eq a, MonadDraw m) => DrawRef a -> a -> m (View String b)
 newRadioButton valueRef value = do
   hoverRef <- newDrawRef False
   font <- loadFont "caligula.ttf" 18

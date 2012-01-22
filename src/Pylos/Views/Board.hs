@@ -50,7 +50,7 @@ data GameplayAction = PlacePiece Coords
                     | EndTurnEarly
                     | GameOver
 
-newGameplayView :: DrawOn z (View GameState GameplayAction)
+newGameplayView :: (MonadDraw m) => m (View GameState GameplayAction)
 newGameplayView = do
   background <- loadSprite "board.png"
   let backgroundView =
@@ -98,7 +98,7 @@ newGameplayView = do
 
 -------------------------------------------------------------------------------
 
-newPlayerView :: Team -> DrawOn z (View GameState a)
+newPlayerView :: (MonadDraw m) => Team -> m (View GameState a)
 newPlayerView team = do
   font1 <- loadFont "caligula.ttf" 36
   font2 <- loadFont "caligula.ttf" 24
@@ -121,7 +121,7 @@ newPlayerView team = do
 
 -------------------------------------------------------------------------------
 
-newBoardView :: DrawOn z (View GameState GameplayAction)
+newBoardView :: (MonadDraw m) => m (View GameState GameplayAction)
 newBoardView = do
   pieceSprites <- let piecePath BlackTeam = "black-piece.png"
                       piecePath WhiteTeam = "white-piece.png"
@@ -189,7 +189,7 @@ newBoardView = do
               transition rect (mkCenter rect)
         _ -> return ()
 
-    handler :: GameState -> IRect -> Event -> DrawOn () (Maybe GameplayAction)
+    handler :: GameState -> IRect -> Event -> Draw (Maybe GameplayAction)
     handler state rect (EvMouseDown pt) =
       case gsPhase state of
         CpuTurnPhase -> ignore
