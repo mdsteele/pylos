@@ -21,7 +21,7 @@ module Pylos.Views
   (-- * The @View@ type
    View(..), inertView,
    -- * Painting
-   paintScreen,
+   paintScreen, handleEvent,
    -- * View combinators
    compoundView, subView, subView_, viewMap,
    -- * Utility functions
@@ -30,20 +30,21 @@ where
 
 import Data.Maybe (catMaybes, listToMaybe)
 
-import Pylos.Data.Point (IRect, pSub, rectSize, rectTopleft)
+import Pylos.Constants (screenRect)
+import Pylos.Data.Point (IRect, pSub, rectTopleft)
 import Pylos.Draw
 import Pylos.Event
-import Pylos.Utility (flip4)
+import Pylos.Utility (flip3)
 
 -------------------------------------------------------------------------------
 -- The View type:
 
 data View a b = View
   { viewPaint :: a -> Paint (),
-    viewHandler :: a -> IRect -> Event -> Draw (Maybe b) }
+    viewHandler :: a -> Event -> Handler (Maybe b) }
 
 inertView :: (a -> Paint ()) -> View a b
-inertView paintFn = View paintFn $ const $ const $ const $ return Nothing
+inertView paintFn = View paintFn $ const $ const $ return Nothing
 
 -------------------------------------------------------------------------------
 -- Painting:
@@ -51,23 +52,29 @@ inertView paintFn = View paintFn $ const $ const $ const $ return Nothing
 paintScreen :: View a b -> a -> IO ()
 paintScreen view input = drawToScreen (viewPaint view input)
 
+handleEvent :: View a b -> a -> Event -> IO (Maybe b)
+handleEvent view input event =
+  runHandlerIO (viewHandler view input event) screenRect
+
 -------------------------------------------------------------------------------
 -- View combinators:
 
 compoundView :: [View a b] -> View a b
 compoundView views = View paintFn handlerFn where
   paintFn input = mapM_ (flip viewPaint input) views
-  handlerFn input rect event = do
-    results <- mapM (flip4 viewHandler input rect event) views
+  handlerFn input event = do
+    results <- mapM (flip3 viewHandler input event) views
     return $ listToMaybe $ reverse $ catMaybes results
 
 subView :: (a -> (Int, Int) -> IRect) -> View a b -> View a b
 subView rectFn view = View paintFn handlerFn where
   paintFn input = do size <- canvasSize
                      withSubCanvas (rectFn input size) (viewPaint view input)
-  handlerFn input rect event =
-    viewHandler view input (rectFn input (rectSize rect)) $
-    translateEvent rect event
+  handlerFn input event = do
+    size <- canvasSize
+    let subrect = rectFn input size
+    withSubCanvas subrect $ do
+      viewHandler view input $ translateEvent subrect event
 
 subView_ :: IRect -> View a b -> View a b
 subView_ = subView . const . const
@@ -75,8 +82,8 @@ subView_ = subView . const . const
 viewMap :: (a -> c) -> (d -> b) -> View c d -> View a b
 viewMap f1 f2 (View paint handler) = View paint' handler' where
   paint' = paint . f1
-  handler' input rect event = do
-    mbValue <- handler (f1 input) rect event
+  handler' input event = do
+    mbValue <- handler (f1 input) event
     return $ fmap f2 mbValue
 
 -------------------------------------------------------------------------------

@@ -189,8 +189,15 @@ newBoardView = do
               transition rect (mkCenter rect)
         _ -> return ()
 
-    handler :: GameState -> IRect -> Event -> Draw (Maybe GameplayAction)
-    handler state rect (EvMouseDown pt) =
+    handler :: GameState -> Event -> Handler (Maybe GameplayAction)
+    handler state (EvMouseDown pt) = do
+      rect <- canvasRect
+      let ptCoords :: (Coords -> Bool) -> Maybe Coords
+          ptCoords fn = find fn $ reverse $ map fst $
+                        filter (ovalContains (fmap fromIntegral $
+                                              pt `pSub` rectTopleft rect) .
+                                snd) $
+                        coordsAndRects (rectSize rect) board
       case gsPhase state of
         CpuTurnPhase -> ignore
         CpuRunningPhase -> ignore
@@ -205,25 +212,19 @@ newBoardView = do
           applyMove (gsTurn state) move board
         AnimatePhase _ -> ignore
         EndPhase -> ignore
-        VictoryPhase ->
+        VictoryPhase -> do
           if rectContains rect pt then return (Just GameOver) else ignore
       where
         board = gsBoard state
         team = gsTurn state
         ownedAnd :: (Coords -> Bool) -> (Coords -> Bool)
         ownedAnd fn coords = pyramidGet coords board == Just team && fn coords
-        ptCoords :: (Coords -> Bool) -> Maybe Coords
-        ptCoords fn = find fn $ reverse $ map fst $
-                      filter (ovalContains (fmap fromIntegral $
-                                            pt `pSub` rectTopleft rect) .
-                              snd) $
-                      coordsAndRects (rectSize rect) board
-    handler _ _ (EvKeyDown KeyZ [KeyModCmd] _) = return (Just UndoPiece)
-    handler state _ (EvKeyDown KeySpace _ _) =
+    handler _ (EvKeyDown KeyZ [KeyModCmd] _) = return (Just UndoPiece)
+    handler state (EvKeyDown KeySpace _ _) =
       case gsPhase state of
         VictoryPhase -> return (Just GameOver)
         _ -> return (Just EndTurnEarly)
-    handler _ _ _ = ignore
+    handler _ _ = ignore
     ignore = return Nothing
 
     ovalContains :: DPoint -> DRect -> Bool

@@ -24,12 +24,11 @@ where
 import Control.Monad (when)
 import Data.IORef
 
-import Pylos.Constants (screenRect)
 import Pylos.Draw (runDraw)
 import Pylos.Event
 import qualified Pylos.Modes.Gameplay as GameplayMode
 import Pylos.State (GameState, newGameState)
-import Pylos.Views (View, paintScreen, viewHandler)
+import Pylos.Views (View, handleEvent, paintScreen)
 import Pylos.Views.Board (newGameplayView)
 import Pylos.Views.NewGame (NewGameAction(..), newNewGameView)
 import Pylos.Views.Title (TitleAction(NewGame, QuitGame), newTitleView)
@@ -47,7 +46,7 @@ newTitleMode = do
   view <- runDraw newTitleView
   let mode EvQuit = return DoQuit
       mode event = do
-        mbAction <- runDraw $ viewHandler view () screenRect event
+        mbAction <- handleEvent view () event
         when (event == EvTick) $ paintScreen view ()
         case mbAction of
           Nothing -> return SameMode
@@ -62,9 +61,9 @@ newNewGameMode prevMode bgView bgInput = do
   view <- runDraw $ newNewGameView bgView bgInput
   let mode EvQuit = return DoQuit
       mode event = do
-        mbAction <- runDraw $ viewHandler view () screenRect event
+        mbAction <- handleEvent view () event
         when (event == EvTick) $ do
-          _ <- runDraw $ viewHandler bgView bgInput screenRect event
+          _ <- handleEvent bgView bgInput event
           paintScreen view ()
         case mbAction of
           Nothing -> return SameMode
@@ -88,7 +87,7 @@ newGameplayMode initState = do
           state' <- GameplayMode.performTick state
           writeIORef stateRef state'
         state <- readIORef stateRef
-        mbAction <- runDraw $ viewHandler view state screenRect event
+        mbAction <- handleEvent view state event
         when (event == EvTick) $ paintScreen view state
         case mbAction of
           Nothing -> return SameMode

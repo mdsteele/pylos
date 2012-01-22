@@ -57,8 +57,9 @@ newTextButton mbKey value = do
       let center = rectCenter rect `pAdd` if pressed then Point 1 1 else pZero
       drawText font (fromTint tint) (LocCenter center) text
 
-    handler (_, enabled) rect event = do
+    handler (_, enabled) event = do
       (kp, mp, mh) <- readDrawRef state
+      rect <- canvasRect
       case event of
         EvKeyDown key kmod _ -> do
           when (null kmod && mbKey == Just key) $ do
@@ -99,7 +100,8 @@ newRadioButton valueRef value = do
       let center = rectCenter rect `pAdd` if pressed then Point 1 1 else pZero
       drawText font (fromTint tint) (LocCenter center) text
 
-    handler _ rect event = do
+    handler _ event = do
+      rect <- canvasRect
       case event of
         EvMouseMotion pt _ ->
           writeDrawRef hoverRef (rectContains rect pt)

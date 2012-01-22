@@ -23,11 +23,12 @@ module Pylos.Draw
   (initializeScreen,
    -- * Sprites
    Sprite, spriteWidth, spriteHeight, spriteSize, subSprite,
-   -- * The Draw Monad
+   -- * The Draw monad
    Draw, MonadDraw(..), debugDraw,
-   -- * The Paint Monad
+   -- * The Handler monad
+   Handler, MonadHandler(..), canvasRect, getRelativeMousePos, runHandlerIO,
+   -- * The Paint monad
    Paint, drawToScreen,
-   canvasWidth, canvasHeight, canvasSize, canvasRect,
    -- * Reference cells
    DrawRef, newDrawRef, readDrawRef, writeDrawRef,
    -- * Drawing onto canvases
@@ -35,15 +36,13 @@ module Pylos.Draw
    blitTopleft, blitLoc, blitStretch, blitRepeat,
    -- ** Geometric primitives
    drawOval, drawPolygon, tintOval,
-   -- ** Miscellaneous
-   withSubCanvas,
    -- * Fonts and text
    Font, drawText, renderText, textSize, textWidth,
    -- * Loading resources
    loadFont, loadSprite)
 where
 
-import Control.Applicative (Applicative)
+import Control.Applicative ((<*>), Applicative, pure)
 import Control.Arrow ((&&&), (***))
 import Control.Monad (when)
 import Data.Bits (xor)
@@ -137,12 +136,95 @@ debugDraw :: (MonadDraw m) => String -> m ()
 debugDraw = runDraw . Draw . putStrLn
 
 -------------------------------------------------------------------------------
+-- The Handler monad:
+
+newtype Handler a = Handler { fromHandler :: IRect -> IO a }
+
+instance Functor Handler where
+  fmap fn (Handler hfn) = Handler (fmap fn . hfn)
+
+instance Applicative Handler where
+  pure = Handler . const . pure
+  (Handler hfn1) <*> (Handler hfn2) =
+    Handler $ \rect -> hfn1 rect <*> hfn2 rect
+
+instance Monad Handler where
+  return = Handler . const . return
+  (Handler hfn) >>= fn = Handler $ \rect -> do
+    x <- hfn rect
+    fromHandler (fn x) rect
+  fail = Handler . const . fail
+
+instance MonadDraw Handler where
+  runDraw = Handler . const . fromDraw
+
+class (MonadDraw m) => MonadHandler m where
+  runHandler :: Handler a -> m a
+
+  canvasSize :: m (Int, Int)
+
+  canvasWidth :: m Int
+  canvasWidth = fmap fst canvasSize
+
+  canvasHeight :: m Int
+  canvasHeight = fmap snd canvasSize
+
+  withSubCanvas :: IRect -> m a -> m a
+
+instance MonadHandler Handler where
+  runHandler = id
+  canvasSize = Handler (return . rectSize)
+  canvasWidth = Handler (return . rectW)
+  canvasHeight = Handler (return . rectH)
+  withSubCanvas subrect handler = Handler $ \rect -> do
+    fromHandler handler (subrect `rectPlus` rectTopleft rect)
+
+canvasRect :: (MonadHandler m) => m IRect
+canvasRect = do
+  (width, height) <- canvasSize
+  return $ Rect 0 0 width height
+
+getRelativeMousePos :: (MonadHandler m) => m IPoint
+getRelativeMousePos = runHandler $ Handler $ \rect -> do
+  (absoluteMouseX, absoluteMouseY, _) <- SDL.getMouseState
+  return (Point (absoluteMouseX - rectX rect) (absoluteMouseY - rectY rect))
+
+runHandlerIO :: Handler a -> IRect -> IO a
+runHandlerIO = fromHandler
+
+-------------------------------------------------------------------------------
 -- The Paint monad:
 
 newtype Paint a = Paint { fromPaint :: IO a }
   deriving (Applicative, Functor, Monad)
 
 instance MonadDraw Paint where runDraw = Paint . fromDraw
+
+instance MonadHandler Paint where
+  runHandler handler = Paint $ do
+    scissor <- GL.get GL.scissor
+    fromHandler handler (fromScissor scissor)
+  canvasSize = Paint $ do
+    scissor <- GL.get GL.scissor
+    return $ case scissor of
+      Nothing -> (screenWidth, screenHeight)
+      Just (_, GL.Size w h) -> (fromIntegral w, fromIntegral h)
+  withSubCanvas = paintWithSubCanvas
+
+paintWithSubCanvas :: IRect -> Paint a -> Paint a
+paintWithSubCanvas rect paint = Paint $ GL.preservingMatrix $ do
+  GL.translate $ GL.Vector3 (toGLdouble $ rectX rect)
+                            (toGLdouble $ rectY rect) 0
+  oldScissor <- GL.get GL.scissor
+  let oldRect = fromScissor oldScissor
+  let rect' = oldRect `rectIntersection` (rect `rectPlus` rectTopleft oldRect)
+  GL.scissor $= Just
+      (GL.Position (fromIntegral $ rectX rect')
+                   (fromIntegral $ screenHeight - rectY rect' - rectH rect'),
+       GL.Size (fromIntegral $ rectW rect') (fromIntegral $ rectH rect'))
+  result <- fromPaint paint
+  GL.scissor $= oldScissor
+  return result
 
 drawToScreen :: Paint () -> IO ()
 drawToScreen paint = do
@@ -151,24 +233,6 @@ drawToScreen paint = do
   GL.flush -- TODO: Are the flush and finish at all necessary?
   GL.finish
   SDL.glSwapBuffers
-
-canvasWidth :: Paint Int
-canvasWidth = fmap fst canvasSize
-
-canvasHeight :: Paint Int
-canvasHeight = fmap snd canvasSize
-
-canvasSize :: Paint (Int, Int)
-canvasSize = Paint $ do
-  scissor <- GL.get GL.scissor
-  return $ case scissor of
-    Nothing -> (screenWidth, screenHeight)
-    Just (_, GL.Size w h) -> (fromIntegral w, fromIntegral h)
-
-canvasRect :: Paint IRect
-canvasRect = do
-  (width, height) <- canvasSize
-  return $ Rect 0 0 width height
 
 -------------------------------------------------------------------------------
 -- Reference cells:
@@ -292,27 +356,6 @@ drawPolygon tint points = Paint $ do
   drawPrimitive GL.LineLoop tint $ mapM_ pointVertex' points
 
 -------------------------------------------------------------------------------
--- Miscellaneous canvas functions:
-
-withSubCanvas :: IRect -> Paint a -> Paint a
-withSubCanvas rect paint = Paint $ GL.preservingMatrix $ do
-  GL.translate $ GL.Vector3 (toGLdouble $ rectX rect)
-                            (toGLdouble $ rectY rect) 0
-  oldScissor <- GL.get GL.scissor
-  let fromScissor (GL.Position x y, GL.Size w h) =
-        Rect (fromIntegral x) (screenHeight - fromIntegral y - fromIntegral h)
-             (fromIntegral w) (fromIntegral h)
-  let oldRect = maybe screenRect fromScissor oldScissor
-  let rect' = oldRect `rectIntersection` (rect `rectPlus` rectTopleft oldRect)
-  GL.scissor $= Just
-      (GL.Position (fromIntegral $ rectX rect')
-                   (fromIntegral $ screenHeight - rectY rect' - rectH rect'),
-       GL.Size (fromIntegral $ rectW rect') (fromIntegral $ rectH rect'))
-  result <- fromPaint paint
-  GL.scissor $= oldScissor
-  return result
-
--------------------------------------------------------------------------------
 -- Fonts and text:
 
 newtype Font = Font SDLt.Font
@@ -421,6 +464,11 @@ surfaceFormats surface = do
 
 -- | Convert a big-endian word to native endianness.
 foreign import ccall unsafe "netinet/in.h" ntohl :: Word32 -> Word32
+
+fromScissor :: Maybe (GL.Position, GL.Size) -> IRect
+fromScissor = maybe screenRect $ \(GL.Position x y, GL.Size w h) ->
+  Rect (fromIntegral x) (screenHeight - fromIntegral y - fromIntegral h)
+       (fromIntegral w) (fromIntegral h)
 
 setTint :: Tint -> IO ()
 setTint (Tint r g b a) = GL.color $

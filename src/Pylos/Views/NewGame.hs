@@ -43,11 +43,11 @@ newNewGameView bgView bgInput = do
   let paint input = do
         viewPaint bgView bgInput
         viewPaint dialog input
-      handler input rect event = do
+      handler input event = do
         when (event == EvTick) $ do
-          _ <- viewHandler bgView bgInput rect event
+          _ <- viewHandler bgView bgInput event
           return ()
-        viewHandler dialog input rect event
+        viewHandler dialog input event
   return $ View paint handler
 
 -------------------------------------------------------------------------------
@@ -147,10 +147,10 @@ newDialogBackgroundView = do
 
 inject :: Draw c -> View a b -> View a c
 inject action (View paint handler) = View paint handler' where
-  handler' input rect event = do
-    mbValue <- handler input rect event
+  handler' input event = do
+    mbValue <- handler input event
     case mbValue of
       Nothing -> return Nothing
-      Just _ -> fmap Just action
+      Just _ -> fmap Just $ runDraw action
 
 -------------------------------------------------------------------------------
