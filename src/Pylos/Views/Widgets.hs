@@ -21,6 +21,7 @@ module Pylos.Views.Widgets
   (newLabel, newTextButton, newRadioButton, drawBevelRect)
 where
 
+import Control.Applicative ((<$>))
 import Control.Monad (when)
 
 import Pylos.Data.Color (Tint(Tint), fromTint, whiteColor)
@@ -48,7 +49,7 @@ newTextButton mbKey value = do
     paint (text, enabled) = do
       (keyPressed, mousePressed) <- readDrawRef state
       rect <- canvasRect
-      mouseHover <- fmap (rectContains rect) getRelativeMousePos
+      mouseHover <- maybe False (rectContains rect) <$> getRelativeMousePos
       let pressed = enabled && (keyPressed || mousePressed && mouseHover)
       let tint = if not enabled then Tint 128 128 128 128
                  else if pressed then Tint 64 64 255 255
@@ -89,7 +90,7 @@ newRadioButton valueRef value = do
 
     paint text = do
       rect <- canvasRect
-      mouseHover <- fmap (rectContains rect) getRelativeMousePos
+      mouseHover <- maybe False (rectContains rect) <$> getRelativeMousePos
       current <- readDrawRef valueRef
       let pressed = current == value
       let tint = if pressed then Tint 255 64 64 255

@@ -41,11 +41,11 @@ newNewGameView :: (MonadDraw m) => View a b -> a -> m (View () NewGameAction)
 newNewGameView bgView bgInput = do
   dialog <- fmap (subView_ $ Rect 140 110 360 260) newNewGameDialog
   let paint input = do
-        viewPaint bgView bgInput
+        withInputsSuppressed $ viewPaint bgView bgInput
         viewPaint dialog input
       handler input event = do
         when (event == EvTick) $ do
-          _ <- viewHandler bgView bgInput event
+          _ <- withInputsSuppressed $ viewHandler bgView bgInput event
           return ()
         viewHandler dialog input event
   return $ View paint handler

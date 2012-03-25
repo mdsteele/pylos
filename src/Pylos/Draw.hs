@@ -26,7 +26,8 @@ module Pylos.Draw
    -- * The Draw monad
    Draw, MonadDraw(..), debugDraw,
    -- * The Handler monad
-   Handler, MonadHandler(..), canvasRect, getRelativeMousePos, runHandlerIO,
+   Handler, MonadHandler(..), canvasRect, runHandlerIO,
+   getRelativeMousePos, withInputsSuppressed,
    -- * The Paint monad
    Paint, drawToScreen,
    -- * Reference cells
@@ -42,7 +43,7 @@ module Pylos.Draw
    loadFont, loadSprite)
 where
 
-import Control.Applicative ((<*>), Applicative, pure)
+import Control.Applicative ((<*), (<*>), Applicative, pure)
 import Control.Arrow ((&&&), (***))
 import Control.Monad (when)
 import Data.Bits (xor)
@@ -133,7 +134,7 @@ instance MonadDraw Draw where runDraw = id
 instance MonadDraw IO where runDraw = fromDraw
 
 debugDraw :: (MonadDraw m) => String -> m ()
-debugDraw = runDraw . Draw . putStrLn
+debugDraw = drawIO . putStrLn
 
 -------------------------------------------------------------------------------
 -- The Handler monad:
@@ -184,13 +185,26 @@ canvasRect = do
   (width, height) <- canvasSize
   return $ Rect 0 0 width height
 
-getRelativeMousePos :: (MonadHandler m) => m IPoint
-getRelativeMousePos = runHandler $ Handler $ \rect -> do
-  (absoluteMouseX, absoluteMouseY, _) <- SDL.getMouseState
-  return (Point (absoluteMouseX - rectX rect) (absoluteMouseY - rectY rect))
-
 runHandlerIO :: Handler a -> IRect -> IO a
 runHandlerIO = fromHandler
+
+getRelativeMousePos :: (MonadHandler m) => m (Maybe IPoint)
+getRelativeMousePos = runHandler $ Handler $ \rect -> do
+  suppressed <- readIORef inputsSuppressed
+  if suppressed then return Nothing else do
+  (absoluteMouseX, absoluteMouseY, _) <- SDL.getMouseState
+  return $ Just $ Point (absoluteMouseX - rectX rect)
+                        (absoluteMouseY - rectY rect)
+
+withInputsSuppressed :: (MonadHandler m) => m a -> m a
+withInputsSuppressed action = do
+  old <- drawIO (readIORef inputsSuppressed <*
+                 writeIORef inputsSuppressed True)
+  action <* drawIO (writeIORef inputsSuppressed old)
+
+{-# NOINLINE inputsSuppressed #-} -- needed for unsafePerformIO
+inputsSuppressed :: IORef Bool
+inputsSuppressed = unsafePerformIO (newIORef False)
 
 -------------------------------------------------------------------------------
 -- The Paint monad:
@@ -498,5 +512,8 @@ toGLdouble = toFloating
 
 whiteTint :: Tint
 whiteTint = Tint 255 255 255 255
+
+drawIO :: (MonadDraw m) => IO a -> m a
+drawIO = runDraw . Draw
 
 -------------------------------------------------------------------------------
